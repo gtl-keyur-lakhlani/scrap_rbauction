@@ -1,4 +1,5 @@
 import scrapy
+import requests, json
 
 from rbauction.items import RbauctionItem
 from scrapy_splash import SplashRequest
@@ -6,114 +7,90 @@ from scrapy_splash import SplashRequest
 
 class RbAuctionSpider(scrapy.Spider):
     name = "rbauction"
+    http_user = 'a77f8d9112a14cd6bfc4e3734261b2aa'
+    # start_urls = ["https://www.rbauction.com/2014-CATERPILLAR--LGP-CRAWLER-TRACTORCTR?invId=10782064&id=ci&auction=EDMONTON-AB-2018226"]
     start_urls = ["https://www.rbauction.com/"]
     global url
     url = "https://www.rbauction.com"
 
     def parse(self, response):
-        for cat in response.xpath("//li[contains(@class, 'cc-bottom-margin')]/a//@href"):
-            page = cat.extract()
-            one_page = url + page
-            yield SplashRequest(one_page, callback=self.second_page, priority=1)
-
-    def second_page(self, response):
-        button = response.xpath("//a[contains(@class, 'sc-EHOje dKcoaW')]//@href").extract_first()
-        other_page = url + button
-        yield other_page
-        # yield SplashRequest(other_page, callback=self.parse_content)
-
-    def parse_content(self, response):
-        cat = response.xpath("//nav[contains(@class, 'b-breadcrumb')]/ol/li/a/text()").extract()
-        cat_len = len(cat)
-        category = cat[cat_len - 1]
-        sub_category = response.xpath("//nav[contains(@class, 'b-breadcrumb')]/ol/li/span/text()").extract_first()
-        image = response.xpath(
-            "//div[contains(@class, 's-item__image-wrapper')]//img[contains(@class, 's-item__image-img')]").extract()
-        thumb_image = []
-
-        for img in image:
-            img_src = img.split('"')
-            for thumb in img_src:
-                if 'jpg' in thumb:
-                    thumb_image.append(thumb)
-        j = 0
-
-        for href in response.xpath(
-                "//div[contains(@class, 's-item__info clearfix')]/a[contains(@class, 's-item__link')]//@href"):
-            url = href.extract()
-            listing_url = url
-            thumbnail_url = thumb_image[j]
-            j = j + 1
-            yield scrapy.Request(url, callback=self.parse_dir_contents, meta={'listing_url': listing_url,
-                                                                              'thumbnail_url': thumbnail_url,
-                                                                              'category': category,
-                                                                              'sub_category': sub_category})
+        link = response.xpath("//li[contains(@class, 'cc-bottom-margin')]/a//@href").extract()
+        page_id_list = []
+        for page_id in link:
+            page_id = page_id.split('=')[1]
+            page_id_list.append(page_id)
+        # one_page = url + page
+        k = 0
+        while k != len(page_id_list):
+            path = requests.get(
+                "https://www.rbauction.com/rba-msapi/search?keywords=&searchParams=%7B%22category%22%3A%22"+str(page_id_list[k])+"%22%7D&page=0&maxCount=48&trackingType=2&withResults=true&withFacets=true&withBreadcrumbs=true&catalog=ci&locale=en_US")
+            data = path.json()
+            for m in range(0, 48):
+                details_url = data["response"]["results"][m]["url"]
+                thumbnails_url = data["response"]["results"][m]["img"]
+                equipment_id = data["response"]["results"][m]["equipmentId"]
+                equipment_id = equipment_id.split('_')[0]
+                base_url = "https://www.rbauction.com/rba-msapi/search/breadcrumb?catalog=ci&locale=en_US&equipmentId="
+                api_url = base_url + str(equipment_id)
+                path_2 = requests.get(api_url)
+                data_2 = path_2.json()
+                category = data_2["breadcrumb"][0]["name"]
+                sub_category = data_2["breadcrumb"][1]["name"]
+                thumbnail_url = url + thumbnails_url
+                listing_url = url + details_url
+                yield scrapy.Request(listing_url, callback=self.parse_dir_contents, meta={'thumbnail_url': thumbnail_url,
+                                                                                          'listing_url': listing_url,
+                                                                                          'category': category,
+                                                                                          'sub_category': sub_category})
+            k = k + 1
 
     def parse_dir_contents(self, response):
         item = RbauctionItem()
         item['Category'] = response.meta['category']
         item['Sub_Category'] = response.meta['sub_category']
-        item['Listing_Title'] = response.xpath("//h1[contains(@id, 'itemTitle')]/text()").extract_first()
-        item['Listing_URL'] = response.meta['listing_url']
         item['Thumbnail_URL'] = response.meta['thumbnail_url']
-        item['Price'] = response.xpath(".//*[@id='prcIsum']/text()").extract_first()
-        item['Vendor_Name'] = response.xpath(".//*[@id='mbgLink']/span/text()").extract_first()
-        item['Vendor_URL'] = response.xpath(".//*[@id='mbgLink']//@href").extract_first()
-        item['Images_URL'] = response.xpath(".//*[@id='vi_main_img_fs']/ul/li/table/tr/td/div/img/@src").extract()
-        vendor_detail = response.xpath(".//*[@id='itemLocation']/div[2]/div/div[2]/span/text()").extract_first()
+        item['Listing_URL'] = response.meta['listing_url']
+        listing_title = response.xpath(".//*[@id='page-title']/h1/text()").extract_first()
+        item['Listing_Title'] = listing_title.strip()
+        image_list = []
+        images = response.xpath(
+            "//div[contains(@class , 'rba-carousel-slides rba-media-viewer-play-small')]//@data-loadsrc").extract()
+        for img in images:
+            image = url + img
+            image_list.append(image)
+        item['Images_URL'] = image_list
+        label_data = response.xpath(
+            "//div[contains(@class, 'rba-content-column rba-content-column-w-40')]/div[contains(@class, 'value-label')]/text()").extract()
 
-        if vendor_detail:
-            vendor_detail = vendor_detail.split(',')
-            details = len(vendor_detail)
-            if details:
-                if details == 3:
-                    item['Vendor_City'] = vendor_detail[0]
-                    item['Vendor_State'] = vendor_detail[1]
-                    item['Vendor_Country'] = vendor_detail[2]
-                elif details == 2:
-                    item['Vendor_State'] = vendor_detail[0]
-                    item['Vendor_Country'] = vendor_detail[1]
-                else:
-                    item['Vendor_Country'] = vendor_detail[0]
-        else:
-            vendor_detail = response.xpath(
-                ".//*[@id='mainContent']/div[1]/table/tr[8]/td/div/div[2]/div[2]/text()").extract_first()
-            if vendor_detail:
-                vendor_detail = vendor_detail.split(',')
-                details = len(vendor_detail)
-                if details:
-                    if details == 3:
-                        item['Vendor_City'] = vendor_detail[0]
-                        item['Vendor_State'] = vendor_detail[1]
-                        item['Vendor_Country'] = vendor_detail[2]
-                    elif details == 2:
-                        item['Vendor_State'] = vendor_detail[0]
-                        item['Vendor_Country'] = vendor_detail[1]
-                    else:
-                        item['Vendor_Country'] = vendor_detail[0]
+        value = response.xpath(
+            "//div[contains(@class, 'rba-content-column rba-content-column-w-60')]/div[contains(@class, 'static-value')]/text()").extract()
 
-        parameter_array = ['ExcavatorType', 'SerialNumber', 'Make', 'Model', 'CustomBundle', 'UPC', 'Hours']
-        model_data = response.xpath(
-            "//div[contains(@id, 'viTabs_0_is')]//div[contains(@class, 'section')]//table/tr/descendant::text()").extract()
-        table_data = [line for line in model_data if line.strip() != '']
+        parameter_array = ['In Yard', 'Year', 'Model', 'Make', 'Model Modifier', 'Asset Type', 'Manufacturer',
+                           'Hrs/Mil/kms', 'Serial Number or VIN', 'Serial No.', 'In yard', 'Meter reads (unverified)']
+
         table_param = []
 
-        for detail in table_data:
-            detail = ''.join(detail.split())
+        for detail in label_data:
             detail = detail.replace(':', '')
             table_param.append(detail)
+
         i = 0
         while i != len(table_param):
-            for value in parameter_array:
-                if table_param[i] == value:
-                    i = i + 1
-                    item[value] = table_param[i]
-                if 'Year' in table_param[i]:
-                    i = i + 1
-                    try:
-                        if table_param[i]:
-                            item['Year'] = table_param[i]
-                    except Exception as e:
-                        pass
+            for param_value in parameter_array:
+                if table_param[i] == param_value:
+                    if table_param[i] == 'Asset Type':
+                        item['AssetType'] = value[i]
+                    elif table_param[i] == 'Hrs/Mil/kms' or 'Meter' in table_param[i]:
+                        item['Hours'] = value[i]
+                    elif table_param[i] == 'In Yard' or table_param[i] == 'In yard':
+                        item['InYard'] = value[i]
+                    elif table_param[i] == 'Model Modifier':
+                        item['ModelModifier'] = value[i]
+                    elif table_param[i] == 'Manufacturer':
+                        item['Make'] = value[i]
+                    elif 'Serial' in table_param[i]:
+                        item['SerialNumber'] = value[i]
+                    else:
+                        item[param_value] = value[i]
             i = i + 1
         yield item

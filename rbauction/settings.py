@@ -14,12 +14,24 @@ BOT_NAME = 'rbauction'
 SPIDER_MODULES = ['rbauction.spiders']
 NEWSPIDER_MODULE = 'rbauction.spiders'
 
+# splash setting
+# SPLASH_URL = 'https://app.scrapinghub.com/p/353720'     # <-- Splash instance URL from Scrapy Cloud
+# APIKEY = 'a77f8d9112a14cd6bfc4e3734261b2aa'         # <-- your API key
+# SPIDER_MIDDLEWARES = {
+#     'scrapy_splash.SplashDeduplicateArgsMiddleware': 100,
+# }
+# DOWNLOADER_MIDDLEWARES = {
+#     'scrapy_splash.SplashCookiesMiddleware': 723,
+#     'scrapy_splash.SplashMiddleware': 725,
+#     'scrapy.downloadermiddlewares.httpcompression.HttpCompressionMiddleware': 810,
+# }
+# DUPEFILTER_CLASS = 'scrapy_splash.SplashAwareDupeFilter'
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'rbauction (+http://www.yourdomain.com)'
 
 # Obey robots.txt rules
-ROBOTSTXT_OBEY = True
+ROBOTSTXT_OBEY = False
 
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
 # CONCURRENT_REQUESTS = 32
@@ -29,6 +41,7 @@ ROBOTSTXT_OBEY = True
 # See also autothrottle settings and docs
 DOWNLOAD_DELAY = 5
 
+CLOSESPIDER_PAGECOUNT = 50
 # The download delay setting will honor only one of:
 # CONCURRENT_REQUESTS_PER_DOMAIN = 16
 # CONCURRENT_REQUESTS_PER_IP = 16
@@ -62,7 +75,6 @@ DOWNLOAD_DELAY = 5
 # EXTENSIONS = {
 #    'scrapy.extensions.telnet.TelnetConsole': None,
 # }
-
 # Configure item pipelines
 # See https://doc.scrapy.org/en/latest/topics/item-pipeline.html
 # ITEM_PIPELINES = {
